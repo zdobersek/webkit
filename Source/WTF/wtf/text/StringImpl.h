@@ -1149,6 +1149,9 @@ inline void StringImpl::copyCharacters(DestinationCharacterType* destination, co
     ASSERT(destination || !numCharacters); // Workaround for clang static analyzer (<rdar://problem/82475719>).
     static_assert(std::is_same_v<SourceCharacterType, LChar> || std::is_same_v<SourceCharacterType, UChar>);
     static_assert(std::is_same_v<DestinationCharacterType, LChar> || std::is_same_v<DestinationCharacterType, UChar>);
+    if (!numCharacters)
+        return;
+
     if constexpr (std::is_same_v<SourceCharacterType, DestinationCharacterType>) {
         if (numCharacters == 1) {
             *destination = *source;

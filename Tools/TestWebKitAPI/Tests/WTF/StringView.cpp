@@ -1000,4 +1000,19 @@ TEST(WTF, StringViewUpconvert)
     }
 }
 
+TEST(WTF, StringViewNull)
+{
+    fprintf(stderr, "StringViewNull()\n");
+
+    {
+        String str = emptyString() + String();
+        fprintf(stderr, "#1: str '%s'\n", str.utf8().data());
+    }
+
+    {
+        String str = String() + "test"_s + String();
+        fprintf(stderr, "#2: str: %s\n", str.utf8().data());
+    }
+}
+
 } // namespace TestWebKitAPI
