@@ -112,7 +112,7 @@ bool ArgumentCoder<ResourceError>::decodePlatformData(Decoder& decoder, Resource
     if (!decoder.decode(certificateInfo))
         return false;
 
-    resourceError.setCertificate(certificateInfo.certificate());
+    resourceError.setCertificate(certificateInfo.certificate().get());
     resourceError.setTLSErrors(certificateInfo.tlsErrors());
     return true;
 }

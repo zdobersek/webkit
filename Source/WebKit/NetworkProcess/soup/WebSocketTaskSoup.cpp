@@ -81,7 +81,7 @@ WebSocketTask::WebSocketTask(NetworkSocketChannel& channel, const WebCore::Resou
         // No need to subscribe to the "request-certificate" signal, just set the client certificate upfront.
         auto protectionSpace = WebCore::AuthenticationChallenge::protectionSpaceForClientCertificate(WebCore::soupURIToURL(soup_message_get_uri(msg)));
         auto certificate = m_channel.session()->networkStorageSession()->credentialStorage().get(m_request.cachePartition(), protectionSpace).certificate();
-        soup_message_set_tls_client_certificate(msg, certificate);
+        soup_message_set_tls_client_certificate(msg, certificate.get());
     }
 
     g_signal_connect(msg, "request-certificate-password", G_CALLBACK(+[](SoupMessage* msg, GTlsPassword* tlsPassword, WebSocketTask* task) -> gboolean {
