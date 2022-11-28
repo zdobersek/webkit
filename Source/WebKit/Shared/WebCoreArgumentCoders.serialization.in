@@ -1551,6 +1551,9 @@ enum class WebCore::PixelFormat : uint8_t {
     WebCore::DestinationColorSpace colorSpace;
 };
 
+#if USE(SOUP)
+header: "ArgumentCodersGLib.h"
+#endif
 class WebCore::CertificateInfo {
 #if PLATFORM(COCOA)
     RetainPtr<SecTrustRef> trust()

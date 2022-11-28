@@ -712,7 +712,7 @@ void NetworkDataTaskSoup::completeAuthentication(const AuthenticationChallenge& 
 #if USE(SOUP2)
         ASSERT_NOT_REACHED();
 #else
-        soup_message_set_tls_client_certificate(m_soupMessage.get(), credential.certificate().get());
+        soup_message_set_tls_client_certificate(m_soupMessage.get(), credential.certificate());
 #endif
         break;
     case ProtectionSpace::AuthenticationScheme::ServerTrustEvaluationRequested:

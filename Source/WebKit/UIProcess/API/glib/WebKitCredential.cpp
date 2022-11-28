@@ -262,7 +262,7 @@ GTlsCertificate* webkit_credential_get_certificate(WebKitCredential* credential)
 {
     g_return_val_if_fail(credential, NULL);
 
-    return credential->credential.certificate().get();
+    return credential->credential.certificate();
 }
 
 /**
