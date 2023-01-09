@@ -1601,7 +1601,7 @@ ExceptionOr<void> WebAnimation::commitStyles()
     // 2.4 Let targeted properties be the set of physical longhand properties that are a target property for at least one
     // animation effect associated with animation whose effect target is target.
     HashSet<AnimatableProperty> targetedProperties;
-    for (auto property : effect->animatedProperties()) {
+    for (auto& property : effect->animatedProperties()) {
         if (std::holds_alternative<CSSPropertyID>(property)) {
             for (auto longhand : shorthandForProperty(std::get<CSSPropertyID>(property)))
                 targetedProperties.add(longhand);
@@ -1610,7 +1610,7 @@ ExceptionOr<void> WebAnimation::commitStyles()
     }
     // 2.5 For each property, property, in targeted properties:
     auto didMutate = false;
-    for (auto property : targetedProperties)
+    for (auto& property : targetedProperties)
         didMutate = commitProperty(property) || didMutate;
 
     if (didMutate)

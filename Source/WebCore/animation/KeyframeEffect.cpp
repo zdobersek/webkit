@@ -281,9 +281,9 @@ static inline ExceptionOr<KeyframeEffect::KeyframeLikeObject> processKeyframeLik
 
         // 5. Add a property to to keyframe output with normalized property name as the property name, and property values as the property value.
         if (cssPropertyID == CSSPropertyCustom)
-            keyframeOuput.propertiesAndValues.append({ cssPropertyID, propertyName, propertyValues });
+            keyframeOuput.propertiesAndValues.append({ cssPropertyID, propertyName, WTFMove(propertyValues) });
         else
-            keyframeOuput.propertiesAndValues.append({ cssPropertyID, emptyAtom(), propertyValues });
+            keyframeOuput.propertiesAndValues.append({ cssPropertyID, emptyAtom(), WTFMove(propertyValues) });
     }
 
     // 7. Return keyframe output.
@@ -315,7 +315,7 @@ static inline ExceptionOr<void> processIterableKeyframes(JSGlobalObject& lexical
         auto processKeyframeLikeObjectResult = processKeyframeLikeObject(lexicalGlobalObject, document, Strong<JSObject>(vm, nextValue.toObject(&lexicalGlobalObject)), false);
         if (processKeyframeLikeObjectResult.hasException())
             return processKeyframeLikeObjectResult.releaseException();
-        auto keyframeLikeObject = processKeyframeLikeObjectResult.returnValue();
+        auto& keyframeLikeObject = processKeyframeLikeObjectResult.returnValue();
 
         KeyframeEffect::ParsedKeyframe keyframeOutput;
 
@@ -366,7 +366,7 @@ static inline ExceptionOr<void> processPropertyIndexedKeyframes(JSGlobalObject& 
     auto processKeyframeLikeObjectResult = processKeyframeLikeObject(lexicalGlobalObject, document, WTFMove(keyframesInput), true);
     if (processKeyframeLikeObjectResult.hasException())
         return processKeyframeLikeObjectResult.releaseException();
-    auto propertyIndexedKeyframe = processKeyframeLikeObjectResult.returnValue();
+    auto& propertyIndexedKeyframe = processKeyframeLikeObjectResult.returnValue();
 
     CSSParserContext parserContext(document);
 
@@ -378,7 +378,7 @@ static inline ExceptionOr<void> processPropertyIndexedKeyframes(JSGlobalObject& 
         //    keyframe after m.
         //    We skip this test since we split those properties and the actual CSS properties that we're currently iterating over.
         // 3. Let property values be the value for m.
-        auto propertyValues = m.values;
+        auto& propertyValues = m.values;
         // 4. Let property keyframes be an empty sequence of keyframes.
         Vector<KeyframeEffect::ParsedKeyframe> propertyKeyframes;
         // 5. For each value, v, in property values perform the following steps:
@@ -519,7 +519,7 @@ ExceptionOr<Ref<KeyframeEffect>> KeyframeEffect::create(JSGlobalObject& lexicalG
 
     if (options) {
         OptionalEffectTiming timing;
-        auto optionsValue = options.value();
+        auto& optionsValue = options.value();
         if (std::holds_alternative<double>(optionsValue)) {
             std::variant<double, String> duration = std::get<double>(optionsValue);
             timing.duration = duration;
@@ -740,7 +740,7 @@ auto KeyframeEffect::getKeyframes(Document& document) -> Vector<ComputedKeyframe
             computedKeyframe.customStyleStrings.set(customProperty, styleString);
         };
 
-        for (auto property : keyframe.properties()) {
+        for (auto& property : keyframe.properties()) {
             WTF::switchOn(property,
                 [&] (CSSPropertyID cssProperty) {
                     addPropertyToKeyframe(cssProperty);
@@ -1108,7 +1108,7 @@ void KeyframeEffect::computedNeedsForcedLayout()
 void KeyframeEffect::computeStackingContextImpact()
 {
     m_triggersStackingContext = false;
-    for (auto property : m_blendingKeyframes.properties()) {
+    for (auto& property : m_blendingKeyframes.properties()) {
         if (std::holds_alternative<CSSPropertyID>(property) && WillChangeData::propertyCreatesStackingContext(std::get<CSSPropertyID>(property))) {
             m_triggersStackingContext = true;
             break;
@@ -1305,7 +1305,7 @@ void KeyframeEffect::computeAcceleratedPropertiesState()
     bool hasSomeAcceleratedProperties = false;
     bool hasSomeUnacceleratedProperties = false;
 
-    for (auto property : m_blendingKeyframes.properties()) {
+    for (auto& property : m_blendingKeyframes.properties()) {
         // If any animated property can be accelerated, then the animation should run accelerated.
         if (CSSPropertyAnimation::animationOfPropertyIsAccelerated(property))
             hasSomeAcceleratedProperties = true;
@@ -1585,7 +1585,7 @@ void KeyframeEffect::setAnimatedPropertiesInStyle(RenderStyle& targetStyle, doub
         CSSPropertyAnimation::blendProperty(*this, property, targetStyle, startKeyframeStyle, endKeyframeStyle, transformedDistance, CompositeOperation::Replace, iterationCompositeOperation, currentIteration);
     };
 
-    for (auto property : properties)
+    for (auto& property : properties)
         blendProperty(property);
 }
 
@@ -1800,8 +1800,7 @@ void KeyframeEffect::applyPendingAcceleratedActions()
         return;
     }
 
-    auto pendingAcceleratedActions = m_pendingAcceleratedActions;
-    m_pendingAcceleratedActions.clear();
+    auto pendingAcceleratedActions = std::exchange(m_pendingAcceleratedActions, Vector<AcceleratedAction> { });
 
     // To simplify the code we use a default of 0s for an unresolved current time since for a Stop action that is acceptable.
     auto timeOffset = animation()->currentTime().value_or(0_s).seconds() - delay().seconds();
@@ -2212,21 +2211,21 @@ void KeyframeEffect::computeHasImplicitKeyframeForAcceleratedProperty()
                 // If the keyframe is for 0% or 100%, let's remove all of its properties from
                 // our list of implicit properties.
                 if (!implicitZeroProperties.isEmpty() && !keyframe.key()) {
-                    for (auto property : keyframe.properties())
+                    for (auto& property : keyframe.properties())
                         implicitZeroProperties.remove(property);
                 }
                 if (!implicitOneProperties.isEmpty() && keyframe.key() == 1) {
-                    for (auto property : keyframe.properties())
+                    for (auto& property : keyframe.properties())
                         implicitOneProperties.remove(property);
                 }
             }
             // The only properties left are known to be implicit properties, so we must
             // check them for any accelerated property.
-            for (auto implicitProperty : implicitZeroProperties) {
+            for (auto& implicitProperty : implicitZeroProperties) {
                 if (CSSPropertyAnimation::animationOfPropertyIsAccelerated(implicitProperty))
                     return true;
             }
-            for (auto implicitProperty : implicitOneProperties) {
+            for (auto& implicitProperty : implicitOneProperties) {
                 if (CSSPropertyAnimation::animationOfPropertyIsAccelerated(implicitProperty))
                     return true;
             }
@@ -2280,7 +2279,7 @@ void KeyframeEffect::computeHasKeyframeComposingAcceleratedProperty()
                 // of its properties is accelerated.
                 if (auto keyframeComposite = keyframe.compositeOperation()) {
                     if (*keyframeComposite != CompositeOperation::Replace) {
-                        for (auto property : keyframe.properties()) {
+                        for (auto& property : keyframe.properties()) {
                             if (CSSPropertyAnimation::animationOfPropertyIsAccelerated(property))
                                 return true;
                         }

@@ -3987,7 +3987,7 @@ static std::optional<CSSCustomPropertyValue::SyntaxValueList> blendSyntaxValueLi
         auto blendedSyntaxValues = blendedTransformOperations.operations().map([](auto& transformOperation) -> CSSCustomPropertyValue::SyntaxValue {
             return CSSCustomPropertyValue::TransformSyntaxValue { transformOperation };
         });
-        return CSSCustomPropertyValue::SyntaxValueList { blendedSyntaxValues, from.separator };
+        return CSSCustomPropertyValue::SyntaxValueList { WTFMove(blendedSyntaxValues), from.separator };
     }
 
     // Other lists must have matching sizes.
@@ -4002,7 +4002,7 @@ static std::optional<CSSCustomPropertyValue::SyntaxValueList> blendSyntaxValueLi
         blendedSyntaxValues.append(*blendedSyntaxValue);
     }
 
-    return CSSCustomPropertyValue::SyntaxValueList { blendedSyntaxValues, from.separator };
+    return CSSCustomPropertyValue::SyntaxValueList { WTFMove(blendedSyntaxValues), from.separator };
 }
 
 static Ref<CSSCustomPropertyValue> blendedCSSCustomPropertyValue(const RenderStyle& fromStyle, const RenderStyle& toStyle, const CSSCustomPropertyValue& from, const CSSCustomPropertyValue& to, const CSSPropertyBlendingContext& blendingContext)
@@ -4061,7 +4061,7 @@ static void blendCustomProperty(const CSSPropertyBlendingClient& client, const A
     }
 }
 
-void CSSPropertyAnimation::blendProperty(const CSSPropertyBlendingClient& client, AnimatableProperty property, RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, double progress, CompositeOperation compositeOperation, IterationCompositeOperation iterationCompositeOperation, double currentIteration)
+void CSSPropertyAnimation::blendProperty(const CSSPropertyBlendingClient& client, const AnimatableProperty& property, RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, double progress, CompositeOperation compositeOperation, IterationCompositeOperation iterationCompositeOperation, double currentIteration)
 {
     WTF::switchOn(property,
         [&] (CSSPropertyID propertyId) {
@@ -4072,7 +4072,7 @@ void CSSPropertyAnimation::blendProperty(const CSSPropertyBlendingClient& client
     );
 }
 
-bool CSSPropertyAnimation::isPropertyAnimatable(AnimatableProperty property)
+bool CSSPropertyAnimation::isPropertyAnimatable(const AnimatableProperty& property)
 {
     return WTF::switchOn(property,
         [] (CSSPropertyID propertyId) {
@@ -4085,7 +4085,7 @@ bool CSSPropertyAnimation::isPropertyAnimatable(AnimatableProperty property)
     );
 }
 
-bool CSSPropertyAnimation::isPropertyAdditiveOrCumulative(AnimatableProperty property)
+bool CSSPropertyAnimation::isPropertyAdditiveOrCumulative(const AnimatableProperty& property)
 {
     return WTF::switchOn(property,
         [] (CSSPropertyID propertyId) {
@@ -4096,7 +4096,7 @@ bool CSSPropertyAnimation::isPropertyAdditiveOrCumulative(AnimatableProperty pro
     );
 }
 
-bool CSSPropertyAnimation::propertyRequiresBlendingForAccumulativeIteration(const CSSPropertyBlendingClient& client, AnimatableProperty property, const RenderStyle& a, const RenderStyle& b)
+bool CSSPropertyAnimation::propertyRequiresBlendingForAccumulativeIteration(const CSSPropertyBlendingClient& client, const AnimatableProperty& property, const RenderStyle& a, const RenderStyle& b)
 {
     return WTF::switchOn(property,
         [&] (CSSPropertyID propertyId) {
@@ -4115,7 +4115,7 @@ bool CSSPropertyAnimation::propertyRequiresBlendingForAccumulativeIteration(cons
             auto& toSyntaxValue = std::get<CSSCustomPropertyValue::SyntaxValue>(to->value());
 
             // FIXME: we need to also ensure we blend for iterationComposite for <transform-list>, <filter-value-list> and <shadow>.
-            return WTF::switchOn(fromSyntaxValue, [toSyntaxValue](const Length& fromLength) {
+            return WTF::switchOn(fromSyntaxValue, [&toSyntaxValue](const Length& fromLength) {
                 ASSERT(std::holds_alternative<Length>(toSyntaxValue));
                 return lengthsRequireBlendingForAccumulativeIteration(fromLength, std::get<Length>(toSyntaxValue) );
             }, [] (const StyleColor&) {
@@ -4127,7 +4127,7 @@ bool CSSPropertyAnimation::propertyRequiresBlendingForAccumulativeIteration(cons
     );
 }
 
-bool CSSPropertyAnimation::animationOfPropertyIsAccelerated(AnimatableProperty property)
+bool CSSPropertyAnimation::animationOfPropertyIsAccelerated(const AnimatableProperty& property)
 {
     return WTF::switchOn(property,
         [] (CSSPropertyID cssProperty) {
@@ -4138,7 +4138,7 @@ bool CSSPropertyAnimation::animationOfPropertyIsAccelerated(AnimatableProperty p
     );
 }
 
-bool CSSPropertyAnimation::propertiesEqual(AnimatableProperty property, const RenderStyle& a, const RenderStyle& b, const Document& document)
+bool CSSPropertyAnimation::propertiesEqual(const AnimatableProperty& property, const RenderStyle& a, const RenderStyle& b, const Document& document)
 {
     return WTF::switchOn(property,
         [&] (CSSPropertyID propertyId) {
@@ -4184,7 +4184,7 @@ static bool typeOfSyntaxValueCanBeInterpolated(const CSSCustomPropertyValue::Syn
     );
 }
 
-bool CSSPropertyAnimation::canPropertyBeInterpolated(AnimatableProperty property, const RenderStyle& a, const RenderStyle& b, const Document& document)
+bool CSSPropertyAnimation::canPropertyBeInterpolated(const AnimatableProperty& property, const RenderStyle& a, const RenderStyle& b, const Document& document)
 {
     return WTF::switchOn(property,
         [&] (CSSPropertyID propertyId) {
@@ -4215,7 +4215,7 @@ bool CSSPropertyAnimation::canPropertyBeInterpolated(AnimatableProperty property
                     return false;
                 },
                 [bVariantValue] (const CSSCustomPropertyValue::SyntaxValue& aSyntaxValue) {
-                    auto bSyntaxValue = std::get<CSSCustomPropertyValue::SyntaxValue>(bVariantValue);
+                    auto& bSyntaxValue = std::get<CSSCustomPropertyValue::SyntaxValue>(bVariantValue);
                     return aSyntaxValue != bSyntaxValue && typeOfSyntaxValueCanBeInterpolated(aSyntaxValue);
                 },
                 [] (auto&) {
