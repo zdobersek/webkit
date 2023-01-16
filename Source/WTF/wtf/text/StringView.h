@@ -75,7 +75,9 @@ public:
     StringView(const CharType(&characters)[N])
         : StringView { characters, N - 1 }
     {
+        static_assert(N > 0);
         ASSERT(!characters[N - 1]);
+        ASSERT(strlen(characters) == (N - 1));
     }
 
     ALWAYS_INLINE static StringView fromLatin1(const char* characters)

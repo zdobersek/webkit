@@ -65,7 +65,7 @@ static const String platformVersionForUAString()
 
     struct utsname name;
     uname(&name);
-    static NeverDestroyed<const String> uaOSVersion(makeString(name.sysname, ' ', name.machine));
+    static NeverDestroyed<const String> uaOSVersion(makeString(StringView::fromLatin1(name.sysname), ' ', StringView::fromLatin1(name.machine)));
     return uaOSVersion;
 #else
     // We will always claim to be Safari in Intel Mac OS X, since Safari without
