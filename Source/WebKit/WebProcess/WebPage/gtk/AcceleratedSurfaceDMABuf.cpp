@@ -37,6 +37,8 @@
 #include <gbm.h>
 #include <wtf/SafeStrerror.h>
 
+#include <cairo.h>
+
 namespace WebKit {
 
 std::unique_ptr<AcceleratedSurfaceDMABuf> AcceleratedSurfaceDMABuf::create(WebPage& webPage, Client& client)
@@ -47,6 +49,7 @@ std::unique_ptr<AcceleratedSurfaceDMABuf> AcceleratedSurfaceDMABuf::create(WebPa
 AcceleratedSurfaceDMABuf::AcceleratedSurfaceDMABuf(WebPage& webPage, Client& client)
     : AcceleratedSurface(webPage, client)
 {
+    fprintf(stderr, "AcceleratedSurfaceDMABuf::AcceleratedSurfaceDMABuf() %p\n", this);
 }
 
 AcceleratedSurfaceDMABuf::~AcceleratedSurfaceDMABuf()
@@ -104,6 +107,7 @@ uint64_t AcceleratedSurfaceDMABuf::surfaceID() const
 
 void AcceleratedSurfaceDMABuf::clientResize(const WebCore::IntSize& size)
 {
+    fprintf(stderr, "AcceleratedSurfaceDMABuf::clientResize() (%d,%d)\n", size.width(), size.height());
     auto& display = WebCore::PlatformDisplay::sharedDisplayForCompositing();
     if (m_backImage) {
         display.destroyEGLImage(m_backImage);
@@ -123,10 +127,15 @@ void AcceleratedSurfaceDMABuf::clientResize(const WebCore::IntSize& size)
     if (size.isEmpty())
         return;
 
-    auto* backObject = gbm_bo_create(WebCore::GBMDevice::singleton().device(), size.width(), size.height(), uint32_t(WebCore::DMABufFormat::FourCC::ARGB8888), 0);
+    auto* backObject = gbm_bo_create(WebCore::GBMDevice::singleton().device(), size.width(), size.height(), GBM_FORMAT_ARGB8888, GBM_BO_USE_RENDERING);
     if (!backObject) {
         WTFLogAlways("Failed to create GBM buffer of size %dx%d: %s", size.width(), size.height(), safeStrerror(errno).data());
         return;
+    }
+    {
+        auto* bo = backObject;
+        fprintf(stderr, "backObject %p: size (%u,%u) format %x offset %u stride %u modifier %lx\n",
+            bo, gbm_bo_get_width(bo), gbm_bo_get_height(bo), gbm_bo_get_format(bo), gbm_bo_get_offset(bo, 0), gbm_bo_get_stride(bo), gbm_bo_get_modifier(bo));
     }
     UnixFileDescriptor backFD(gbm_bo_get_fd(backObject), UnixFileDescriptor::Adopt);
     Vector<EGLAttrib> attributes = {
@@ -136,6 +145,8 @@ void AcceleratedSurfaceDMABuf::clientResize(const WebCore::IntSize& size)
         EGL_DMA_BUF_PLANE0_FD_EXT, backFD.value(),
         EGL_DMA_BUF_PLANE0_OFFSET_EXT, gbm_bo_get_offset(backObject, 0),
         EGL_DMA_BUF_PLANE0_PITCH_EXT, gbm_bo_get_stride(backObject),
+        EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT, EGLAttrib(gbm_bo_get_modifier(backObject) >> 32),
+        EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT, EGLAttrib(gbm_bo_get_modifier(backObject) & 0xffffffff),
         EGL_NONE
     };
     m_backImage = display.createEGLImage(EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, nullptr, attributes);
@@ -144,13 +155,18 @@ void AcceleratedSurfaceDMABuf::clientResize(const WebCore::IntSize& size)
         gbm_bo_destroy(backObject);
         return;
     }
-    auto* frontObject = gbm_bo_create(WebCore::GBMDevice::singleton().device(), size.width(), size.height(), uint32_t(WebCore::DMABufFormat::FourCC::ARGB8888), 0);
+    auto* frontObject = gbm_bo_create(WebCore::GBMDevice::singleton().device(), size.width(), size.height(), GBM_FORMAT_ARGB8888, GBM_BO_USE_RENDERING);
     if (!frontObject) {
         WTFLogAlways("Failed to create GBM buffer of size %dx%d: %s", size.width(), size.height(), safeStrerror(errno).data());
         display.destroyEGLImage(m_backImage);
         m_backImage = nullptr;
         gbm_bo_destroy(backObject);
         return;
+    }
+    {
+        auto* bo = frontObject;
+        fprintf(stderr, "frontObject %p: size (%u,%u) format %x offset %u stride %u modifier %lx\n",
+            bo, gbm_bo_get_width(bo), gbm_bo_get_height(bo), gbm_bo_get_format(bo), gbm_bo_get_offset(bo, 0), gbm_bo_get_stride(bo), gbm_bo_get_modifier(bo));
     }
     UnixFileDescriptor frontFD(gbm_bo_get_fd(frontObject), UnixFileDescriptor::Adopt);
     attributes[7] = frontFD.value();
@@ -164,10 +180,23 @@ void AcceleratedSurfaceDMABuf::clientResize(const WebCore::IntSize& size)
         return;
     }
 
+    glGenRenderbuffers(1, &m_backColorBuffer);
+    glBindRenderbuffer(GL_RENDERBUFFER, m_backColorBuffer);
+    fprintf(stderr, "  gl err #1: %x\n", glGetError());
+    glEGLImageTargetRenderbufferStorageOES(GL_RENDERBUFFER, m_backImage);
+    fprintf(stderr, "  gl err #2: %x\n", glGetError());
+
+    glGenRenderbuffers(1, &m_frontColorBuffer);
+    glBindRenderbuffer(GL_RENDERBUFFER, m_frontColorBuffer);
+    fprintf(stderr, "  gl err #3: %x\n", glGetError());
+    glEGLImageTargetRenderbufferStorageOES(GL_RENDERBUFFER, m_frontImage);
+    fprintf(stderr, "  gl err #4: %x\n", glGetError());
+
     glGenRenderbuffers(1, &m_depthStencilBuffer);
     glBindRenderbuffer(GL_RENDERBUFFER, m_depthStencilBuffer);
     glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8_OES, size.width(), size.height());
 
+    fprintf(stderr, "AcceleratedSurfaceDMABuf::clientResize(): configuring\n");
     WebProcess::singleton().parentProcessConnection()->send(Messages::AcceleratedBackingStoreDMABuf::Configure(WTFMove(backFD), WTFMove(frontFD), gbm_bo_get_format(backObject), gbm_bo_get_offset(backObject, 0), gbm_bo_get_stride(backObject), size), m_webPage.identifier());
     gbm_bo_destroy(backObject);
     gbm_bo_destroy(frontObject);
@@ -175,15 +204,33 @@ void AcceleratedSurfaceDMABuf::clientResize(const WebCore::IntSize& size)
 
 void AcceleratedSurfaceDMABuf::willRenderFrame()
 {
+    fprintf(stderr, "AcceleratedSurfaceDMABuf::willRenderFrame() m_backImage %p\n", m_backImage);
     if (!m_backImage)
         return;
 
-    glBindTexture(GL_TEXTURE_2D, m_texture);
-    glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, m_backImage);
+    {
+        glBindRenderbuffer(GL_RENDERBUFFER, m_backColorBuffer);
+        GLint rb_width, rb_height, rb_format, rb_rsize, rb_gsize, rb_bsize, rb_asize;
+        glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_WIDTH, &rb_width);
+        glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_HEIGHT, &rb_height);
+        glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_INTERNAL_FORMAT, &rb_format);
+        glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_RED_SIZE, &rb_rsize);
+        glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_GREEN_SIZE, &rb_gsize);
+        glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_BLUE_SIZE, &rb_bsize);
+        glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_ALPHA_SIZE, &rb_asize);
+        fprintf(stderr, "  m_backColorBuffer: size (%d,%d), format %x, color sizes %d/%d/%d/%d\n",
+            rb_width, rb_height, rb_format, rb_rsize, rb_gsize, rb_bsize, rb_asize);
+    }
     glBindFramebuffer(GL_FRAMEBUFFER, m_fbo);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_texture, 0);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, m_depthStencilBuffer);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, m_depthStencilBuffer);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, m_backColorBuffer);
+
+    //glBindTexture(GL_TEXTURE_2D, m_texture);
+    //glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, m_backImage);
+    //glBindFramebuffer(GL_FRAMEBUFFER, m_fbo);
+    //glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_texture, 0);
+    //glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, m_depthStencilBuffer);
+    //glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, m_depthStencilBuffer);
+    fprintf(stderr, "AcceleratedSurfaceDMABuf: framebuffer status %x\n", glCheckFramebufferStatus(GL_FRAMEBUFFER));
 }
 
 void AcceleratedSurfaceDMABuf::didRenderFrame()
@@ -198,6 +245,7 @@ void AcceleratedSurfaceDMABuf::didRenderFrame()
             if (!weakThis)
                 return;
             std::swap(m_backImage, m_frontImage);
+            std::swap(m_backColorBuffer, m_frontColorBuffer);
             m_client.frameComplete();
         });
     }, m_webPage.identifier());

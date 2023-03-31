@@ -287,6 +287,7 @@ bool GraphicsContextGLGBM::reshapeDisplayBufferBacking()
 
 void GraphicsContextGLGBM::allocateDrawBufferObject()
 {
+    fprintf(stderr, "GraphicsContextGLGBM::allocateDrawBufferObject()\n");
     if (!m_swapchain.swapchain || m_swapchain.drawBO)
         return;
 

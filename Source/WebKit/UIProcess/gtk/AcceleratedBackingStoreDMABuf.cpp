@@ -92,6 +92,7 @@ std::unique_ptr<AcceleratedBackingStoreDMABuf> AcceleratedBackingStoreDMABuf::cr
 AcceleratedBackingStoreDMABuf::AcceleratedBackingStoreDMABuf(WebPageProxy& webPage)
     : AcceleratedBackingStore(webPage)
 {
+    fprintf(stderr, "AcceleratedBackingStoreDMABuf::AcceleratedBackingStoreDMABuf() %p\n", this);
 }
 
 AcceleratedBackingStoreDMABuf::~AcceleratedBackingStoreDMABuf()
@@ -113,6 +114,7 @@ AcceleratedBackingStoreDMABuf::Texture::Texture(GdkGLContext* glContext, const U
     : RenderSource(size, deviceScaleFactor)
     , m_context(glContext)
 {
+    fprintf(stderr, "AcceleratedBackingStoreDMABuf::Texture::Texture() %p\n", this);
     gdk_gl_context_make_current(m_context.get());
     auto& display = WebCore::PlatformDisplay::sharedDisplay();
     Vector<EGLAttrib> attributeList = {
@@ -122,6 +124,8 @@ AcceleratedBackingStoreDMABuf::Texture::Texture(GdkGLContext* glContext, const U
         EGL_DMA_BUF_PLANE0_FD_EXT, backFD.value(),
         EGL_DMA_BUF_PLANE0_OFFSET_EXT, offset,
         EGL_DMA_BUF_PLANE0_PITCH_EXT, stride,
+        EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT, EGLAttrib((0x300000000e08014) >> 32),
+        EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT, EGLAttrib((0x300000000e08014) & 0xffffffff),
         EGL_NONE };
     m_backImage = display.createEGLImage(EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, nullptr, attributeList);
     if (!m_backImage) {
@@ -143,9 +147,35 @@ AcceleratedBackingStoreDMABuf::Texture::Texture(GdkGLContext* glContext, const U
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, m_size.width(), m_size.height(), 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+
+    glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, m_backImage);
+    {
+        GLint red_size = 0;
+        GLint green_size = 0;
+        GLint blue_size = 0;
+        GLint alpha_size = 0;
+        GLint red_type = 0;
+        GLint green_type = 0;
+        GLint blue_type = 0;
+        GLint alpha_type = 0;
+
+        glGetTexLevelParameteriv (GL_TEXTURE_2D, 0, GL_TEXTURE_RED_TYPE, &red_type);
+        glGetTexLevelParameteriv (GL_TEXTURE_2D, 0, GL_TEXTURE_GREEN_TYPE, &green_type);
+        glGetTexLevelParameteriv (GL_TEXTURE_2D, 0, GL_TEXTURE_BLUE_TYPE, &blue_type);
+        glGetTexLevelParameteriv (GL_TEXTURE_2D, 0, GL_TEXTURE_ALPHA_TYPE, &alpha_type);
+
+        glGetTexLevelParameteriv (GL_TEXTURE_2D, 0, GL_TEXTURE_RED_SIZE, &red_size);
+        glGetTexLevelParameteriv (GL_TEXTURE_2D, 0, GL_TEXTURE_GREEN_SIZE, &green_size);
+        glGetTexLevelParameteriv (GL_TEXTURE_2D, 0, GL_TEXTURE_BLUE_SIZE, &blue_size);
+        glGetTexLevelParameteriv (GL_TEXTURE_2D, 0, GL_TEXTURE_ALPHA_SIZE, &alpha_size);
+
+        fprintf(stderr, "  type %x/%x/%x/%x size %d/%d/%d/%d\n",
+            red_type, green_type, blue_type, alpha_type,
+            red_size, green_size, blue_size, alpha_size);
+    }
 
 #if USE(GTK4)
-    glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, m_backImage);
     m_texture[0] = adoptGRef(gdk_gl_texture_new(m_context.get(), m_textureID, m_size.width(), m_size.height(), nullptr, nullptr));
     m_texture[1] = adoptGRef(gdk_gl_texture_new(m_context.get(), m_textureID, m_size.width(), m_size.height(), nullptr, nullptr));
     m_textureIndex = 1;
@@ -182,6 +212,7 @@ bool AcceleratedBackingStoreDMABuf::Texture::swap()
 #if USE(GTK4)
 void AcceleratedBackingStoreDMABuf::Texture::snapshot(GtkSnapshot* gtkSnapshot) const
 {
+    fprintf(stderr, "AcceleratedBackingStoreDMABuf::Texture::snapshot() m_textureID %u m_textureIndex %u\n", m_textureID, m_textureIndex);
     if (!m_textureID)
         return;
 
@@ -205,20 +236,32 @@ void AcceleratedBackingStoreDMABuf::Texture::paint(GtkWidget* widget, cairo_t* c
 AcceleratedBackingStoreDMABuf::Surface::Surface(const UnixFileDescriptor& backFD, const UnixFileDescriptor& frontFD, int fourcc, int32_t offset, int32_t stride, const WebCore::IntSize& size, float deviceScaleFactor)
     : RenderSource(size, deviceScaleFactor)
 {
+    fprintf(stderr, "AcceleratedBackingStoreDMABuf::Surface::Surface() %p\n", this);
     auto* device = WebCore::GBMDevice::singleton().device();
-    struct gbm_import_fd_data fdData = { backFD.value(), static_cast<uint32_t>(m_size.width()), static_cast<uint32_t>(m_size.height()), static_cast<uint32_t>(stride), static_cast<uint32_t>(fourcc) };
-    m_backBuffer = gbm_bo_import(device, GBM_BO_IMPORT_FD, &fdData, GBM_BO_USE_RENDERING);
+
+    struct gbm_import_fd_modifier_data importData;
+    importData.width = static_cast<uint32_t>(m_size.width());
+    importData.height = static_cast<uint32_t>(m_size.height());
+    importData.format = static_cast<uint32_t>(fourcc);
+    importData.num_fds = 1;
+    importData.fds[0] = backFD.value();
+    importData.strides[0] = stride;
+    importData.offsets[0] = offset;
+    importData.modifier = 0;
+
+    m_backBuffer = gbm_bo_import(device, GBM_BO_IMPORT_FD_MODIFIER, &importData, 0);
     if (!m_backBuffer) {
-        WTFLogAlways("Failed to import DMABuf with file descriptor %d", fdData.fd);
+        WTFLogAlways("Failed to import DMABuf with file descriptor %d", importData.fds[0]);
         return;
     }
-    fdData.fd = frontFD.value();
-    m_frontBuffer = gbm_bo_import(device, GBM_BO_IMPORT_FD, &fdData, GBM_BO_USE_RENDERING);
+    importData.fds[0] = frontFD.value();
+    m_frontBuffer = gbm_bo_import(device, GBM_BO_IMPORT_FD_MODIFIER, &importData, 0);
     if (!m_frontBuffer) {
-        WTFLogAlways("Failed to import DMABuf with file descriptor %d", fdData.fd);
+        WTFLogAlways("Failed to import DMABuf with file descriptor %d", importData.fds[0]);
         gbm_bo_destroy(m_backBuffer);
         m_backBuffer = nullptr;
     }
+    fprintf(stderr, "  m_backBuffer %p m_frontBuffer %p\n", m_backBuffer, m_frontBuffer);
 }
 
 AcceleratedBackingStoreDMABuf::Surface::~Surface()
@@ -233,12 +276,20 @@ AcceleratedBackingStoreDMABuf::Surface::~Surface()
 
 RefPtr<cairo_surface_t> AcceleratedBackingStoreDMABuf::Surface::map(struct gbm_bo* buffer) const
 {
+    fprintf(stderr, "AcceleratedBackingStoreDMABuf::Surface::map() buffer %p, size (%d,%d)\n", buffer, m_size.width(), m_size.height());
     if (!buffer)
         return nullptr;
 
     uint32_t mapStride = 0;
     void* mapData = nullptr;
-    void* map = gbm_bo_map(buffer, 0, 0, static_cast<uint32_t>(m_size.width()), static_cast<uint32_t>(m_size.height()), GBM_BO_TRANSFER_READ, &mapStride, &mapData);
+    fprintf(stderr, "  errno %d\n", errno);
+    void* map = nullptr;
+    for (;;) {
+        map = gbm_bo_map(buffer, 0, 0, static_cast<uint32_t>(m_size.width()), static_cast<uint32_t>(m_size.height()), 0, &mapStride, &mapData);
+        break;
+    }
+    fprintf(stderr, "  => map %p, mapData %p, mapStride %u\n", map, mapData, mapStride);
+    fprintf(stderr, "  errno %d\n", errno);
     if (!map)
         return nullptr;
 
@@ -301,6 +352,8 @@ void AcceleratedBackingStoreDMABuf::Surface::paint(GtkWidget*, cairo_t* cr, cons
 
 void AcceleratedBackingStoreDMABuf::configure(UnixFileDescriptor&& backFD, UnixFileDescriptor&& frontFD, int fourcc, int32_t offset, int32_t stride, WebCore::IntSize&& size)
 {
+    fprintf(stderr, "AcceleratedBackingStoreDMABuf::configure() fds %d/%d, fourcc %x offset %d stride %d size (%d,%d)\n",
+        backFD.value(), frontFD.value(), fourcc, offset, stride, size.width(), size.height());
     m_surface.backFD = WTFMove(backFD);
     m_surface.frontFD = WTFMove(frontFD);
     m_surface.fourcc = fourcc;
@@ -412,6 +465,7 @@ void AcceleratedBackingStoreDMABuf::update(const LayerTreeContext& context)
 #if USE(GTK4)
 void AcceleratedBackingStoreDMABuf::snapshot(GtkSnapshot* gtkSnapshot)
 {
+    fprintf(stderr, "AcceleratedBackingStoreDMABuf::snapshot()\n");
     if (!m_committedSource)
         return;
 
@@ -422,6 +476,7 @@ void AcceleratedBackingStoreDMABuf::snapshot(GtkSnapshot* gtkSnapshot)
 #else
 bool AcceleratedBackingStoreDMABuf::paint(cairo_t* cr, const WebCore::IntRect& clipRect)
 {
+    fprintf(stderr, "AcceleratedBackingStoreDMABuf::paint()\n");
     if (!m_committedSource)
         return false;
 

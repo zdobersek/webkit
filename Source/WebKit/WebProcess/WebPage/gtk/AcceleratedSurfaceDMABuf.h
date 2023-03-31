@@ -64,6 +64,9 @@ private:
     unsigned m_texture { 0 };
     unsigned m_fbo { 0 };
     unsigned m_depthStencilBuffer { 0 };
+
+    unsigned m_backColorBuffer { 0 };
+    unsigned m_frontColorBuffer { 0 };
     EGLImage m_backImage { nullptr };
     EGLImage m_frontImage { nullptr };
 };
