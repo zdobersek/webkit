@@ -147,7 +147,6 @@ void AcceleratedSurfaceDMABuf::clientResize(const WebCore::IntSize& size)
                 EGL_DMA_BUF_PLANE0_OFFSET_EXT, static_cast<EGLAttrib>(metadata.offset),
                 EGL_DMA_BUF_PLANE0_PITCH_EXT, static_cast<EGLAttrib>(metadata.stride),
             };
-            fprintf(stderr, "AcceleratedSurfaceDMABuf: modifier %lx\n", metadata.modifier);
             if (metadata.modifier != uint64_t(WebCore::DMABufFormat::Modifier::Invalid) && display.eglExtensions().EXT_image_dma_buf_import_modifiers) {
                 std::array<EGLAttrib, 4> modifierAttributes {
                     EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT, static_cast<EGLAttrib>(metadata.modifier >> 32),
