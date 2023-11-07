@@ -1,0 +1,7 @@
+
+header: "StorageAccessStatus.h"
+enum class WebKit::StorageAccessStatus : uint8_t {
+    CannotRequestAccess,
+    RequiresUserPrompt,
+    HasAccess
+}

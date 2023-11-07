@@ -1,0 +1,12 @@
+
+header: "FileSystemStorageError.h"
+enum class WebKit::FileSystemStorageError : uint8_t {
+    AccessHandleActive,
+    BackendNotSupported,
+    FileNotFound,
+    InvalidModification,
+    InvalidName,
+    InvalidState,
+    TypeMismatch,
+    Unknown
+}

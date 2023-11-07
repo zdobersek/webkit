@@ -1,0 +1,22 @@
+
+header: "PrivateClickMeasurementManagerInterface.h"
+enum class WebKit::PCM::MessageType : uint8_t {
+    StoreUnattributed,
+    HandleAttribution,
+    Clear,
+    ClearForRegistrableDomain,
+    MigratePrivateClickMeasurementFromLegacyStorage,
+    SetDebugModeIsEnabled,
+    ToStringForTesting,
+    SetOverrideTimerForTesting,
+    SetTokenPublicKeyURLForTesting,
+    SetTokenSignatureURLForTesting,
+    SetAttributionReportURLsForTesting,
+    MarkAllUnattributedAsExpiredForTesting,
+    MarkAttributedPrivateClickMeasurementsAsExpiredForTesting,
+    SetPCMFraudPreventionValuesForTesting,
+    StartTimerImmediatelyForTesting,
+    SetPrivateClickMeasurementAppBundleIDForTesting,
+    DestroyStoreForTesting,
+    AllowTLSCertificateChainForLocalPCMTesting
+}
